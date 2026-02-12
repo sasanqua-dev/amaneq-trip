@@ -114,6 +114,7 @@ export interface Database {
           car_number: string | null;
           seat_number: string | null;
           photo_url: string | null;
+          google_place_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -137,6 +138,7 @@ export interface Database {
           car_number?: string | null;
           seat_number?: string | null;
           photo_url?: string | null;
+          google_place_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -158,6 +160,7 @@ export interface Database {
           car_number?: string | null;
           seat_number?: string | null;
           photo_url?: string | null;
+          google_place_id?: string | null;
         };
       };
       expenses: {
@@ -262,7 +265,48 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_itinerary_item: {
+        Args: {
+          p_trip_id: string;
+          p_day_number: number;
+          p_prev_item_id?: string | null;
+          p_title?: string;
+          p_description?: string | null;
+          p_location_name?: string | null;
+          p_departure_name?: string | null;
+          p_arrival_name?: string | null;
+          p_prefecture_code?: number | null;
+          p_latitude?: number | null;
+          p_longitude?: number | null;
+          p_start_time?: string | null;
+          p_end_time?: string | null;
+          p_duration_minutes?: number | null;
+          p_category?: string | null;
+          p_transport_type?: string | null;
+          p_car_number?: string | null;
+          p_seat_number?: string | null;
+          p_photo_url?: string | null;
+          p_google_place_id?: string | null;
+        };
+        Returns: string;
+      };
+      delete_itinerary_item: {
+        Args: {
+          p_item_id: string;
+        };
+        Returns: undefined;
+      };
+      move_itinerary_item: {
+        Args: {
+          p_item_id: string;
+          p_trip_id: string;
+          p_new_day_number: number;
+          p_new_prev_item_id?: string | null;
+        };
+        Returns: undefined;
+      };
+    };
     Enums: {
       trip_status: TripStatus;
       member_role: MemberRole;

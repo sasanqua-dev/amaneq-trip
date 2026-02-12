@@ -58,6 +58,8 @@ export function ItineraryForm({ tripId, maxDay, items, editItem, open: controlle
   const [latitude, setLatitude] = useState(editItem?.latitude != null ? String(editItem.latitude) : "");
   const [longitude, setLongitude] = useState(editItem?.longitude != null ? String(editItem.longitude) : "");
   const [photoUrl, setPhotoUrl] = useState(editItem?.photoUrl ?? "");
+  const [googlePlaceId, setGooglePlaceId] = useState(editItem?.googlePlaceId ?? "");
+  const [formKey, setFormKey] = useState(0);
 
   const dayItems = useMemo(() => {
     const filtered = (items ?? [])
@@ -72,6 +74,29 @@ export function ItineraryForm({ tripId, maxDay, items, editItem, open: controlle
   }, [editItem, dayItems]);
 
   const [selectedPrevItemId, setSelectedPrevItemId] = useState(defaultPrevItemId);
+
+  function resetForm() {
+    setTitle("");
+    setLocationName("");
+    setPrefectureCode(NO_PREFECTURE);
+    setLatitude("");
+    setLongitude("");
+    setPhotoUrl("");
+    setGooglePlaceId("");
+    setSelectedDay("1");
+    setTimeMode("clock");
+    const filtered = (items ?? []).filter((i) => i.dayNumber === 1);
+    const sorted = sortLinkedList(filtered);
+    setSelectedPrevItemId(sorted.length > 0 ? sorted[sorted.length - 1].id : FIRST_SENTINEL);
+    setFormKey((k) => k + 1);
+  }
+
+  function handleDialogOpenChange(newOpen: boolean) {
+    if (!newOpen) {
+      resetForm();
+    }
+    setOpen(newOpen);
+  }
 
   const handleDayChange = (day: string) => {
     setSelectedDay(day);
@@ -98,6 +123,7 @@ export function ItineraryForm({ tripId, maxDay, items, editItem, open: controlle
     if (place.latitude) setLatitude(String(place.latitude));
     if (place.longitude) setLongitude(String(place.longitude));
     if (place.photoUrl) setPhotoUrl(place.photoUrl);
+    if (place.placeId) setGooglePlaceId(place.placeId);
   }
 
   async function handleSubmit(formData: FormData) {
@@ -111,6 +137,7 @@ export function ItineraryForm({ tripId, maxDay, items, editItem, open: controlle
     formData.set("latitude", latitude);
     formData.set("longitude", longitude);
     formData.set("photoUrl", photoUrl);
+    formData.set("googlePlaceId", googlePlaceId);
 
     if (timeMode === "duration") {
       const h = parseInt(formData.get("durationHours") as string, 10) || 0;
@@ -126,11 +153,11 @@ export function ItineraryForm({ tripId, maxDay, items, editItem, open: controlle
     } else {
       await createItineraryItem(formData);
     }
-    setOpen(false);
+    handleDialogOpenChange(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       {!isControlled && (
         <DialogTrigger asChild>
           <Button>
@@ -143,7 +170,7 @@ export function ItineraryForm({ tripId, maxDay, items, editItem, open: controlle
         <DialogHeader>
           <DialogTitle>{editItem ? "スポットを編集" : "スポットを追加"}</DialogTitle>
         </DialogHeader>
-        <form key={editItem?.id ?? "new"} action={handleSubmit} className="space-y-4">
+        <form key={editItem?.id ?? `new-${formKey}`} action={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="item-title">スポット名</Label>
             <PlaceAutocomplete
@@ -326,7 +353,7 @@ export function ItineraryForm({ tripId, maxDay, items, editItem, open: controlle
             <Button
               type="button"
               variant="outline"
-              onClick={() => setOpen(false)}
+              onClick={() => handleDialogOpenChange(false)}
             >
               キャンセル
             </Button>

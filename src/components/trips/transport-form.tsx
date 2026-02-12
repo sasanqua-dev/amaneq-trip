@@ -72,6 +72,23 @@ export function TransportForm({ tripId, maxDay, items, editItem, open: controlle
   }, [editItem, dayItems]);
 
   const [selectedPrevItemId, setSelectedPrevItemId] = useState(defaultPrevItemId);
+  const [formKey, setFormKey] = useState(0);
+
+  function resetForm() {
+    setSelectedDay("1");
+    setTimeMode("clock");
+    const filtered = (items ?? []).filter((i) => i.dayNumber === 1);
+    const sorted = sortLinkedList(filtered);
+    setSelectedPrevItemId(sorted.length > 0 ? sorted[sorted.length - 1].id : FIRST_SENTINEL);
+    setFormKey((k) => k + 1);
+  }
+
+  function handleDialogOpenChange(newOpen: boolean) {
+    if (!newOpen) {
+      resetForm();
+    }
+    setOpen(newOpen);
+  }
 
   const handleDayChange = (day: string) => {
     setSelectedDay(day);
@@ -104,11 +121,11 @@ export function TransportForm({ tripId, maxDay, items, editItem, open: controlle
     } else {
       await createItineraryItem(formData);
     }
-    setOpen(false);
+    handleDialogOpenChange(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       {!isControlled && (
         <DialogTrigger asChild>
           <Button variant="outline">
@@ -121,7 +138,7 @@ export function TransportForm({ tripId, maxDay, items, editItem, open: controlle
         <DialogHeader>
           <DialogTitle>{editItem ? "移動を編集" : "移動を追加"}</DialogTitle>
         </DialogHeader>
-        <form key={editItem?.id ?? "new"} action={handleSubmit} className="space-y-4">
+        <form key={editItem?.id ?? `new-${formKey}`} action={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="transport-title">タイトル</Label>
             <Input
@@ -316,7 +333,7 @@ export function TransportForm({ tripId, maxDay, items, editItem, open: controlle
             <Button
               type="button"
               variant="outline"
-              onClick={() => setOpen(false)}
+              onClick={() => handleDialogOpenChange(false)}
             >
               キャンセル
             </Button>

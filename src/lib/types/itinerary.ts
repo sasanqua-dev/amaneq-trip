@@ -20,4 +20,5 @@ export interface ItineraryItem {
   carNumber: string | null;
   seatNumber: string | null;
   photoUrl: string | null;
+  googlePlaceId: string | null;
 }

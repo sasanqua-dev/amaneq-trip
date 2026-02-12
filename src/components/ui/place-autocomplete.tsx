@@ -6,6 +6,7 @@ import { loadPlacesLibrary } from "@/lib/google-maps";
 import { MapPin } from "lucide-react";
 
 export interface PlaceResult {
+  placeId: string;
   name: string;
   formattedAddress: string;
   addressComponents: google.maps.places.AddressComponent[];
@@ -147,6 +148,7 @@ export function PlaceAutocomplete({
       }
 
       onPlaceSelect({
+        placeId: suggestion.placeId,
         name: place.displayName ?? "",
         formattedAddress: place.formattedAddress ?? "",
         addressComponents: place.addressComponents ?? [],

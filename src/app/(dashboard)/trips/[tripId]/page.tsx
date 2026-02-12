@@ -90,6 +90,7 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
     carNumber: item.car_number,
     seatNumber: item.seat_number,
     photoUrl: item.photo_url,
+    googlePlaceId: item.google_place_id,
   }));
 
   const spotCount = rawItems.length;

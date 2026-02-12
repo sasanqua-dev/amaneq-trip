@@ -67,22 +67,6 @@ export async function createItineraryItem(formData: FormData) {
   const rawPrevItemId = formData.get("prevItemId") as string;
   const prevItemId = parsePrevItemId(rawPrevItemId);
 
-  // Find the current successor of the insertion point
-  let successorQuery = supabase
-    .from("itinerary_items")
-    .select("id")
-    .eq("trip_id", tripId)
-    .eq("day_number", dayNumber);
-
-  if (prevItemId) {
-    successorQuery = successorQuery.eq("prev_item_id", prevItemId);
-  } else {
-    successorQuery = successorQuery.is("prev_item_id", null);
-  }
-
-  const { data: successorData } = await successorQuery.limit(1);
-  const successor = (successorData ?? [])[0] as { id: string } | undefined;
-
   const prefectureCodeRaw = formData.get("prefectureCode") as string;
   const prefectureCode = prefectureCodeRaw ? parseInt(prefectureCodeRaw, 10) : null;
   const latitudeRaw = formData.get("latitude") as string;
@@ -94,44 +78,31 @@ export async function createItineraryItem(formData: FormData) {
   const durationMinutes = durationMinutesRaw ? parseInt(durationMinutesRaw, 10) : null;
   const useDuration = durationMinutes !== null && durationMinutes > 0;
 
-  // Insert the new item
-  const { data: newItemData, error } = await supabase
-    .from("itinerary_items")
-    .insert({
-      trip_id: tripId,
-      day_number: dayNumber,
-      prev_item_id: prevItemId,
-      title: formData.get("title") as string,
-      description: (formData.get("description") as string) || null,
-      location_name: (formData.get("locationName") as string) || null,
-      departure_name: (formData.get("departureName") as string) || null,
-      arrival_name: (formData.get("arrivalName") as string) || null,
-      prefecture_code: prefectureCode,
-      latitude,
-      longitude,
-      start_time: useDuration ? null : (formData.get("startTime") as string) || null,
-      end_time: useDuration ? null : (formData.get("endTime") as string) || null,
-      duration_minutes: useDuration ? durationMinutes : null,
-      category: ((formData.get("category") as string) || null) as ItineraryCategory | null,
-      transport_type: ((formData.get("transportType") as string) || null) as TransportType | null,
-      car_number: (formData.get("carNumber") as string) || null,
-      seat_number: (formData.get("seatNumber") as string) || null,
-      photo_url: (formData.get("photoUrl") as string) || null,
-    })
-    .select("id")
-    .single();
+  // Use RPC for atomic linked-list insert (defers unique constraints)
+  const { error } = await supabase.rpc("create_itinerary_item", {
+    p_trip_id: tripId,
+    p_day_number: dayNumber,
+    p_prev_item_id: prevItemId,
+    p_title: formData.get("title") as string,
+    p_description: (formData.get("description") as string) || null,
+    p_location_name: (formData.get("locationName") as string) || null,
+    p_departure_name: (formData.get("departureName") as string) || null,
+    p_arrival_name: (formData.get("arrivalName") as string) || null,
+    p_prefecture_code: prefectureCode,
+    p_latitude: latitude,
+    p_longitude: longitude,
+    p_start_time: useDuration ? null : (formData.get("startTime") as string) || null,
+    p_end_time: useDuration ? null : (formData.get("endTime") as string) || null,
+    p_duration_minutes: useDuration ? durationMinutes : null,
+    p_category: (formData.get("category") as string) || null,
+    p_transport_type: (formData.get("transportType") as string) || null,
+    p_car_number: (formData.get("carNumber") as string) || null,
+    p_seat_number: (formData.get("seatNumber") as string) || null,
+    p_photo_url: (formData.get("photoUrl") as string) || null,
+    p_google_place_id: (formData.get("googlePlaceId") as string) || null,
+  });
 
   if (error) throw new Error(`Failed to create itinerary item: ${error.message}`);
-
-  const newItemId = (newItemData as { id: string }).id;
-
-  // Update the successor to point to the new item
-  if (successor) {
-    await supabase
-      .from("itinerary_items")
-      .update({ prev_item_id: newItemId })
-      .eq("id", successor.id);
-  }
 
   // Auto-register prefecture visit
   if (prefectureCode) {
@@ -170,37 +141,15 @@ export async function updateItineraryItem(formData: FormData) {
     current.prev_item_id !== newPrevItemId
   );
 
-  if (positionChanged && current) {
-    // Step 1: Remove from old position - update old successor to skip this item
-    await supabase
-      .from("itinerary_items")
-      .update({ prev_item_id: current.prev_item_id })
-      .eq("prev_item_id", itemId);
-
-    // Step 2: Find new successor at the target position
-    let successorQuery = supabase
-      .from("itinerary_items")
-      .select("id")
-      .eq("trip_id", tripId)
-      .eq("day_number", newDayNumber)
-      .neq("id", itemId);
-
-    if (newPrevItemId) {
-      successorQuery = successorQuery.eq("prev_item_id", newPrevItemId);
-    } else {
-      successorQuery = successorQuery.is("prev_item_id", null);
-    }
-
-    const { data: successorData } = await successorQuery.limit(1);
-    const successor = (successorData ?? [])[0] as { id: string } | undefined;
-
-    // Update the new successor to point to this item
-    if (successor) {
-      await supabase
-        .from("itinerary_items")
-        .update({ prev_item_id: itemId })
-        .eq("id", successor.id);
-    }
+  // Handle position change atomically via RPC (defers unique constraints)
+  if (positionChanged) {
+    const { error: moveError } = await supabase.rpc("move_itinerary_item", {
+      p_item_id: itemId,
+      p_trip_id: tripId,
+      p_new_day_number: newDayNumber,
+      p_new_prev_item_id: newPrevItemId,
+    });
+    if (moveError) throw new Error(`Failed to move itinerary item: ${moveError.message}`);
   }
 
   const prefectureCodeRaw = formData.get("prefectureCode") as string;
@@ -214,12 +163,10 @@ export async function updateItineraryItem(formData: FormData) {
   const durationMinutes = durationMinutesRaw ? parseInt(durationMinutesRaw, 10) : null;
   const useDuration = durationMinutes !== null && durationMinutes > 0;
 
-  // Update the item itself
+  // Update the item's data fields (position already handled by RPC if changed)
   const { error } = await supabase
     .from("itinerary_items")
     .update({
-      day_number: newDayNumber,
-      prev_item_id: newPrevItemId,
       title: formData.get("title") as string,
       description: (formData.get("description") as string) || null,
       location_name: (formData.get("locationName") as string) || null,
@@ -236,6 +183,7 @@ export async function updateItineraryItem(formData: FormData) {
       car_number: (formData.get("carNumber") as string) || null,
       seat_number: (formData.get("seatNumber") as string) || null,
       photo_url: (formData.get("photoUrl") as string) || null,
+      google_place_id: (formData.get("googlePlaceId") as string) || null,
     })
     .eq("id", itemId);
 
@@ -257,27 +205,10 @@ export async function deleteItineraryItem(itemId: string, tripId: string) {
   const supabase = createServerClient();
   await checkMembership(supabase, tripId, user.dbId);
 
-  // Get the item's prev_item_id before deleting
-  const { data: itemData } = await supabase
-    .from("itinerary_items")
-    .select("prev_item_id")
-    .eq("id", itemId)
-    .single();
-
-  const item = itemData as { prev_item_id: string | null } | null;
-
-  // Update successor to skip the deleted item
-  if (item) {
-    await supabase
-      .from("itinerary_items")
-      .update({ prev_item_id: item.prev_item_id })
-      .eq("prev_item_id", itemId);
-  }
-
-  const { error } = await supabase
-    .from("itinerary_items")
-    .delete()
-    .eq("id", itemId);
+  // Use RPC for atomic linked-list delete (defers unique constraints)
+  const { error } = await supabase.rpc("delete_itinerary_item", {
+    p_item_id: itemId,
+  });
 
   if (error) throw new Error(`Failed to delete itinerary item: ${error.message}`);
 

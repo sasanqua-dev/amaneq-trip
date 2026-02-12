@@ -49,6 +49,7 @@ export default async function ItineraryPage({ params }: ItineraryPageProps) {
     carNumber: item.car_number,
     seatNumber: item.seat_number,
     photoUrl: item.photo_url,
+    googlePlaceId: item.google_place_id,
   }));
 
   const maxDay = items.length > 0 ? Math.max(...items.map((i) => i.dayNumber)) : 0;
