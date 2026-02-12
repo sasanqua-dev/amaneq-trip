@@ -37,7 +37,7 @@ export default async function SharedTripPage({ params }: SharedTripPageProps) {
 	const result = await getSharedTripByToken(token);
 	if (!result) notFound();
 
-	const { trip, permission, itinerary, expenses } = result;
+	const { trip, permission, memberCount, itinerary, expenses } = result;
 
 	// Editor link: auto-join logged-in users, show banner for others
 	let showEditorLoginBanner = false;
@@ -78,6 +78,7 @@ export default async function SharedTripPage({ params }: SharedTripPageProps) {
 	}));
 
 	const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+	const perPerson = memberCount > 0 ? Math.ceil(totalExpenses / memberCount) : 0;
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -144,8 +145,8 @@ export default async function SharedTripPage({ params }: SharedTripPageProps) {
 									</div>
 								))}
 								<div className="border-t pt-3 flex items-center justify-between font-semibold">
-									<span>合計</span>
-									<span>&yen;{totalExpenses.toLocaleString()}</span>
+									<span>1人あたり</span>
+									<span>&yen;{perPerson.toLocaleString()}</span>
 								</div>
 							</CardContent>
 						</Card>

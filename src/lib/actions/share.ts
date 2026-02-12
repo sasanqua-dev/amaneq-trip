@@ -134,16 +134,21 @@ export async function getSharedTripByToken(token: string) {
     return null;
   }
 
-  // Fetch trip + itinerary + expenses in parallel
-  const [tripResult, itineraryResult, expenseResult] = await Promise.all([
-    supabase.from("trips").select().eq("id", share.trip_id).single(),
-    supabase
-      .from("itinerary_items")
-      .select()
-      .eq("trip_id", share.trip_id)
-      .order("day_number", { ascending: true }),
-    supabase.from("expenses").select().eq("trip_id", share.trip_id),
-  ]);
+  // Fetch trip + itinerary + expenses + member count in parallel
+  const [tripResult, itineraryResult, expenseResult, { count: memberCount }] =
+    await Promise.all([
+      supabase.from("trips").select().eq("id", share.trip_id).single(),
+      supabase
+        .from("itinerary_items")
+        .select()
+        .eq("trip_id", share.trip_id)
+        .order("day_number", { ascending: true }),
+      supabase.from("expenses").select().eq("trip_id", share.trip_id),
+      supabase
+        .from("trip_members")
+        .select("id", { count: "exact", head: true })
+        .eq("trip_id", share.trip_id),
+    ]);
 
   const trip = tripResult.data as TripRow | null;
   if (!trip) return null;
@@ -151,6 +156,7 @@ export async function getSharedTripByToken(token: string) {
   return {
     trip,
     permission: share.permission,
+    memberCount: memberCount ?? 1,
     itinerary: (itineraryResult.data ?? []) as ItineraryRow[],
     expenses: (expenseResult.data ?? []) as ExpenseRow[],
   };

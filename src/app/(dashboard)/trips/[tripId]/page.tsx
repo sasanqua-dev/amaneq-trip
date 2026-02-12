@@ -52,7 +52,7 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
   const trip = data as TripRow | null;
   if (!trip) notFound();
 
-  const [itineraryResult, expenseResult] = await Promise.all([
+  const [itineraryResult, expenseResult, { count: memberCount }] = await Promise.all([
     supabase
       .from("itinerary_items")
       .select()
@@ -61,6 +61,10 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
     supabase
       .from("expenses")
       .select()
+      .eq("trip_id", tripId),
+    supabase
+      .from("trip_members")
+      .select("id", { count: "exact", head: true })
       .eq("trip_id", tripId),
   ]);
 
@@ -95,6 +99,8 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
 
   const spotCount = rawItems.length;
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const members = memberCount ?? 1;
+  const perPerson = members > 0 ? Math.ceil(totalExpenses / members) : 0;
   const uniquePrefectures = new Set(
     rawItems.filter((p) => p.prefecture_code != null).map((p) => p.prefecture_code)
   ).size;
@@ -168,9 +174,9 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">
-                &yen;{totalExpenses.toLocaleString()}
+                &yen;{perPerson.toLocaleString()}
               </p>
-              <p className="text-xs text-muted-foreground">合計</p>
+              <p className="text-xs text-muted-foreground">1人あたり</p>
             </CardContent>
           </Card>
         </Link>
