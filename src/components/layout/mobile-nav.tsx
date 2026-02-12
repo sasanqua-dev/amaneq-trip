@@ -10,13 +10,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu, Map, Plane, Settings, PlusCircle } from "lucide-react";
+import { Menu, Map, Plane, PlusCircle } from "lucide-react";
 import { useState } from "react";
 
 const navItems = [
   { href: "/trips", label: "旅行一覧", icon: Plane },
   { href: "/map", label: "訪問マップ", icon: Map },
-  { href: "/settings", label: "設定", icon: Settings },
 ];
 
 export function MobileNav() {
