@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { MapPin, Trash2, Pencil, ArrowRight, TrainFront, Train, Bus, Ship, Plane, Car, Footprints, Bike, Camera, UtensilsCrossed, Hotel, CircleDot, type LucideIcon } from 'lucide-react';
+import { MapPin, Trash2, Pencil, ArrowRight, TrainFront, Train, Bus, Ship, Plane, Car, Footprints, Bike, Camera, UtensilsCrossed, Hotel, CircleDot, ExternalLink, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { deleteItineraryItem } from '@/lib/actions/itinerary';
 import { ItineraryForm } from '@/components/trips/itinerary-form';
@@ -75,6 +75,20 @@ function getItemIcon(item: ItineraryItem): LucideIcon {
 		return transportIcons[item.transportType] ?? Train;
 	}
 	return categoryIcons[item.category ?? 'other'] ?? CircleDot;
+}
+
+function getGoogleMapsUrl(item: ItineraryItem): string | null {
+	if (item.googlePlaceId) {
+		return `https://www.google.com/maps/place/?q=place_id:${item.googlePlaceId}`;
+	}
+	if (item.latitude != null && item.longitude != null) {
+		return `https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`;
+	}
+	const name = item.locationName ?? item.title;
+	if (name) {
+		return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
+	}
+	return null;
 }
 
 function formatDate(startDate: string, dayNumber: number): string {
@@ -170,6 +184,47 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 		return `${minutes}分`;
 	}
 
+	/**
+	 * 時刻指定アイテム間にある所要時間指定アイテムの合計と残り時間を計算する。
+	 * 結果は「次の時刻指定アイテムの直前のコネクタindex」をキーとするMapで返す。
+	 */
+	function computeBlockFreeTime(sorted: ItineraryItem[]): Map<number, { freeMinutes: number; totalMinutes: number; usedMinutes: number }> {
+		const result = new Map<number, { freeMinutes: number; totalMinutes: number; usedMinutes: number }>();
+
+		let blockEndTime: string | null = null;
+		let accumulatedDuration = 0;
+
+		for (let i = 0; i < sorted.length; i++) {
+			const item = sorted[i];
+			const st = item.startTime?.slice(0, 5);
+			const et = item.endTime?.slice(0, 5);
+
+			if (st && blockEndTime !== null && accumulatedDuration > 0) {
+				const [sh, sm] = st.split(':').map(Number);
+				const [eh, em] = blockEndTime.split(':').map(Number);
+				const totalMinutes = sh * 60 + sm - (eh * 60 + em);
+
+				if (totalMinutes > 0) {
+					const freeMinutes = totalMinutes - accumulatedDuration;
+					result.set(i - 1, { freeMinutes, totalMinutes, usedMinutes: accumulatedDuration });
+				}
+			}
+
+			if (st) {
+				accumulatedDuration = 0;
+			}
+
+			if (et) {
+				blockEndTime = et;
+				accumulatedDuration = 0;
+			} else if (item.durationMinutes) {
+				accumulatedDuration += item.durationMinutes;
+			}
+		}
+
+		return result;
+	}
+
 	if (items.length === 0) {
 		return <p className="text-muted-foreground">スポット・移動はまだありません。上のボタンから追加してください。</p>;
 	}
@@ -205,6 +260,7 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 						.sort(([a], [b]) => Number(a) - Number(b))
 						.map(([day, dayItems]) => {
 							const sorted = sortLinkedList(dayItems);
+							const freeTimeBlocks = computeBlockFreeTime(sorted);
 							const dayNum = Number(day);
 							return (
 								<div
@@ -230,6 +286,7 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 											const nextItem = !isLast ? sorted[index + 1] : null;
 											const nextStartTime = nextItem?.startTime?.slice(0, 5);
 											const gapMinutes = calcGapMinutes(endTime, nextStartTime);
+											const freeTimeInfo = freeTimeBlocks.get(index);
 
 											return (
 												<div key={item.id}>
@@ -260,9 +317,10 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 														{/* Content card */}
 														<div className="flex-1 min-w-0 -mt-0.5">
 															<div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+															<div className={cn(item.photoUrl && 'sm:flex')}>
 																{/* Photo */}
 																{item.photoUrl && (
-																	<div className="relative h-32 w-full">
+																	<div className="relative h-32 sm:h-auto sm:w-40 md:w-48 shrink-0">
 																		<img
 																			src={item.photoUrl}
 																			alt={item.title}
@@ -271,7 +329,7 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 																		/>
 																	</div>
 																)}
-																<div className="px-4 py-3">
+																<div className="px-4 py-3 flex-1 min-w-0">
 																{/* Header: title + actions */}
 																<div className="flex items-start justify-between gap-2">
 																	<h3 className="font-medium leading-snug">{item.title}</h3>
@@ -312,6 +370,21 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 																			{item.locationName}
 																		</span>
 																	) : null}
+																	{(() => {
+																		if (item.category === 'transport') return null;
+																		const mapsUrl = getGoogleMapsUrl(item);
+																		return mapsUrl ? (
+																			<a
+																				href={mapsUrl}
+																				target="_blank"
+																				rel="noopener noreferrer"
+																				className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+																			>
+																				<ExternalLink className="h-3 w-3 shrink-0" />
+																				Google Maps
+																			</a>
+																		) : null;
+																	})()}
 																</div>
 
 																{/* Transport details */}
@@ -329,6 +402,7 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 																{item.description && <p className="mt-1.5 text-sm text-muted-foreground">{item.description}</p>}
 															</div>
 															</div>
+															</div>
 														</div>
 													</div>
 
@@ -340,6 +414,16 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 																{endTime && <p className="text-xs tabular-nums text-muted-foreground leading-none whitespace-nowrap">{endTime}</p>}
 																{gapMinutes !== null && (
 																	<p className="text-xs tabular-nums font-medium text-amber-600 leading-none whitespace-nowrap">{formatMinutes(gapMinutes)}</p>
+																)}
+																{freeTimeInfo && (
+																	<p className={cn(
+																		'text-xs tabular-nums font-medium leading-none whitespace-nowrap',
+																		freeTimeInfo.freeMinutes >= 0 ? 'text-amber-600' : 'text-red-600',
+																	)}>
+																		{freeTimeInfo.freeMinutes >= 0
+																			? formatMinutes(freeTimeInfo.freeMinutes)
+																			: `${formatMinutes(Math.abs(freeTimeInfo.freeMinutes))}超過`}
+																	</p>
 																)}
 															</div>
 															{/* Connector line */}
