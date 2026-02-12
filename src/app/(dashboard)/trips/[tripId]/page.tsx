@@ -9,6 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
+  AvatarGroup,
+} from "@/components/ui/avatar";
 import { Calendar, MapPin, Receipt, Share2, Edit } from "lucide-react";
 import { ensureUser } from "@/lib/auth0";
 import { createServerClient } from "@/lib/supabase/server";
@@ -52,7 +58,7 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
   const trip = data as TripRow | null;
   if (!trip) notFound();
 
-  const [itineraryResult, expenseResult, { count: memberCount }] = await Promise.all([
+  const [itineraryResult, expenseResult, membersResult] = await Promise.all([
     supabase
       .from("itinerary_items")
       .select()
@@ -64,7 +70,7 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
       .eq("trip_id", tripId),
     supabase
       .from("trip_members")
-      .select("id", { count: "exact", head: true })
+      .select("user_id, role, users(id, display_name, avatar_url)")
       .eq("trip_id", tripId),
   ]);
 
@@ -97,9 +103,19 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
     googlePlaceId: item.google_place_id,
   }));
 
+  const tripMembers = (membersResult.data ?? []).map((m) => ({
+    userId: m.user_id as string,
+    role: m.role as string,
+    ...(Array.isArray(m.users) ? m.users[0] : m.users) as {
+      id: string;
+      display_name: string | null;
+      avatar_url: string | null;
+    },
+  }));
+
   const spotCount = rawItems.length;
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const members = memberCount ?? 1;
+  const members = tripMembers.length || 1;
   const perPerson = members > 0 ? Math.ceil(totalExpenses / members) : 0;
   const uniquePrefectures = new Set(
     rawItems.filter((p) => p.prefecture_code != null).map((p) => p.prefecture_code)
@@ -123,6 +139,27 @@ export default async function TripDetailPage({ params }: TripDetailPageProps) {
             <p className="text-sm text-muted-foreground mt-1">
               {trip.start_date ?? "未定"} ~ {trip.end_date ?? "未定"}
             </p>
+          )}
+          {tripMembers.length > 0 && (
+            <div className="mt-2 flex items-center gap-2">
+              <AvatarGroup>
+                {tripMembers.map((member) => {
+                  const name = member.display_name ?? "";
+                  const initials = name.slice(0, 2).toUpperCase() || "?";
+                  return (
+                    <Avatar key={member.userId} size="sm">
+                      {member.avatar_url ? (
+                        <AvatarImage src={member.avatar_url} alt={name} />
+                      ) : null}
+                      <AvatarFallback>{initials}</AvatarFallback>
+                    </Avatar>
+                  );
+                })}
+              </AvatarGroup>
+              <span className="text-xs text-muted-foreground">
+                {tripMembers.length}人のメンバー
+              </span>
+            </div>
           )}
         </div>
         <div className="flex gap-2">
