@@ -188,7 +188,16 @@ export function ItineraryForm({ tripId, maxDay, items, editItem, open: controlle
             <Input
               id="item-location"
               value={locationName}
-              onChange={(e) => setLocationName(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setLocationName(v);
+                if (!v) {
+                  setLatitude("");
+                  setLongitude("");
+                  setPhotoUrl("");
+                  setGooglePlaceId("");
+                }
+              }}
               placeholder="例: 京都府京都市東山区清水1丁目294"
             />
           </div>
