@@ -8,6 +8,7 @@ import { deleteItineraryItem } from '@/lib/actions/itinerary';
 import { ItineraryForm } from '@/components/trips/itinerary-form';
 import { TransportForm } from '@/components/trips/transport-form';
 import { sortLinkedList } from '@/lib/utils/linked-list';
+import { getAirlineName } from '@/lib/utils/airline';
 import type { ItineraryItem } from '@/lib/types/itinerary';
 
 export type { ItineraryItem };
@@ -393,6 +394,10 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 																		<span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
 																			{transportTypeLabels[item.transportType] ?? item.transportType}
 																		</span>
+																		{item.transportType === 'airplane' && (() => {
+																			const airline = getAirlineName(item.title);
+																			return airline ? <span className="text-xs text-muted-foreground">{airline}</span> : null;
+																		})()}
 																		{item.carNumber && <span className="text-xs text-muted-foreground">{item.carNumber}号車</span>}
 																		{item.seatNumber && <span className="text-xs text-muted-foreground">座席 {item.seatNumber}</span>}
 																	</div>
