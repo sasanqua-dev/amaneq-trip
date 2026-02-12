@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Train } from "lucide-react";
+import { PlaceAutocomplete } from "@/components/ui/place-autocomplete";
 import { createItineraryItem, updateItineraryItem } from "@/lib/actions/itinerary";
 import { sortLinkedList } from "@/lib/utils/linked-list";
 import type { ItineraryItem } from "@/lib/types/itinerary";
@@ -55,9 +56,19 @@ export function TransportForm({ tripId, maxDay, items, editItem, open: controlle
   const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
 
   const [selectedDay, setSelectedDay] = useState(String(editItem?.dayNumber ?? 1));
+  const [departureName, setDepartureName] = useState(editItem?.departureName ?? "");
+  const [arrivalName, setArrivalName] = useState(editItem?.arrivalName ?? "");
   const [timeMode, setTimeMode] = useState<"clock" | "duration">(
     editItem?.durationMinutes ? "duration" : "clock"
   );
+
+  const transitTypes = [
+    "train_station",
+    "subway_station",
+    "bus_station",
+    "airport",
+    "transit_station",
+  ];
 
   const dayItems = useMemo(() => {
     const filtered = (items ?? [])
@@ -76,6 +87,8 @@ export function TransportForm({ tripId, maxDay, items, editItem, open: controlle
 
   function resetForm() {
     setSelectedDay("1");
+    setDepartureName("");
+    setArrivalName("");
     setTimeMode("clock");
     const filtered = (items ?? []).filter((i) => i.dayNumber === 1);
     const sorted = sortLinkedList(filtered);
@@ -107,6 +120,8 @@ export function TransportForm({ tripId, maxDay, items, editItem, open: controlle
     formData.set("tripId", tripId);
     formData.set("category", "transport");
     formData.set("prevItemId", selectedPrevItemId);
+    formData.set("departureName", departureName);
+    formData.set("arrivalName", arrivalName);
     if (timeMode === "duration") {
       const h = parseInt(formData.get("durationHours") as string, 10) || 0;
       const m = parseInt(formData.get("durationMins") as string, 10) || 0;
@@ -153,20 +168,24 @@ export function TransportForm({ tripId, maxDay, items, editItem, open: controlle
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="transport-departure">出発地</Label>
-              <Input
+              <PlaceAutocomplete
                 id="transport-departure"
-                name="departureName"
+                value={departureName}
+                onChange={setDepartureName}
+                onPlaceSelect={(place) => setDepartureName(place.name)}
                 placeholder="例: 東京駅"
-                defaultValue={editItem?.departureName ?? ""}
+                includedPrimaryTypes={transitTypes}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="transport-arrival">到着地</Label>
-              <Input
+              <PlaceAutocomplete
                 id="transport-arrival"
-                name="arrivalName"
+                value={arrivalName}
+                onChange={setArrivalName}
+                onPlaceSelect={(place) => setArrivalName(place.name)}
                 placeholder="例: 京都駅"
-                defaultValue={editItem?.arrivalName ?? ""}
+                includedPrimaryTypes={transitTypes}
               />
             </div>
           </div>

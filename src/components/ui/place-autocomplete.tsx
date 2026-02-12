@@ -28,6 +28,7 @@ interface PlaceAutocompleteProps {
   placeholder?: string;
   required?: boolean;
   id?: string;
+  includedPrimaryTypes?: string[];
 }
 
 export function PlaceAutocomplete({
@@ -37,6 +38,7 @@ export function PlaceAutocomplete({
   placeholder,
   required,
   id,
+  includedPrimaryTypes,
 }: PlaceAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -90,6 +92,7 @@ export function PlaceAutocomplete({
               input,
               includedRegionCodes: ["jp"],
               language: "ja",
+              ...(includedPrimaryTypes && { includedPrimaryTypes }),
             }
           );
 
@@ -109,7 +112,7 @@ export function PlaceAutocomplete({
         setIsOpen(false);
       }
     },
-    [ready]
+    [ready, includedPrimaryTypes]
   );
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
