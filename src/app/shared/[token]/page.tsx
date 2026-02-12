@@ -1,8 +1,10 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Calendar, Receipt } from 'lucide-react';
-import { getSharedTripByToken } from '@/lib/actions/share';
+import { Calendar, LogIn, Receipt } from 'lucide-react';
+import { auth0 } from '@/lib/auth0';
+import { getSharedTripByToken, joinTripAsEditor } from '@/lib/actions/share';
 import { ItineraryTimeline } from '@/components/trips/itinerary-timeline';
 import type { Database } from '@/lib/supabase/types';
 import type { ItineraryItem } from '@/lib/types/itinerary';
@@ -35,7 +37,22 @@ export default async function SharedTripPage({ params }: SharedTripPageProps) {
 	const result = await getSharedTripByToken(token);
 	if (!result) notFound();
 
-	const { trip, itinerary, expenses } = result;
+	const { trip, permission, itinerary, expenses } = result;
+
+	// Editor link: auto-join logged-in users, show banner for others
+	let showEditorLoginBanner = false;
+
+	if (permission === 'editor') {
+		const session = await auth0.getSession();
+		if (session) {
+			const joinResult = await joinTripAsEditor(token);
+			if (joinResult) {
+				redirect(`/trips/${joinResult.tripId}/itinerary`);
+			}
+		} else {
+			showEditorLoginBanner = true;
+		}
+	}
 
 	const items: ItineraryItem[] = itinerary.map((row) => ({
 		id: row.id,
@@ -65,6 +82,21 @@ export default async function SharedTripPage({ params }: SharedTripPageProps) {
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
+				{/* ログイン推進バナー */}
+				{showEditorLoginBanner && (
+					<div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950 p-4 flex items-center justify-between">
+						<p className="text-sm text-blue-800 dark:text-blue-200">
+							ログインすると、この旅行プランを編集できます
+						</p>
+						<a href={`/auth/login?returnTo=/shared/${token}`}>
+							<Button size="sm" variant="outline" className="gap-1.5">
+								<LogIn className="h-3.5 w-3.5" />
+								ログイン
+							</Button>
+						</a>
+					</div>
+				)}
+
 				{/* ヘッダー */}
 				<div>
 					<p className="text-sm text-muted-foreground mb-1">共有された旅行</p>

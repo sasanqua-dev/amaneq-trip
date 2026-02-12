@@ -155,3 +155,55 @@ export async function getSharedTripByToken(token: string) {
     expenses: (expenseResult.data ?? []) as ExpenseRow[],
   };
 }
+
+export async function joinTripAsEditor(
+  token: string
+): Promise<{ tripId: string } | null> {
+  const user = await ensureUser();
+  if (!user) return null;
+
+  const supabase = createServerClient();
+
+  // Validate share token
+  const { data: shareData } = await supabase
+    .from("shared_trips")
+    .select()
+    .eq("share_token", token)
+    .eq("is_active", true)
+    .single();
+
+  const share = shareData as SharedTripRow | null;
+  if (!share) return null;
+
+  if (share.expires_at && new Date(share.expires_at) < new Date()) {
+    return null;
+  }
+
+  if (share.permission !== "editor") return null;
+
+  // Check existing membership
+  const { data: memberData } = await supabase
+    .from("trip_members")
+    .select()
+    .eq("trip_id", share.trip_id)
+    .eq("user_id", user.dbId)
+    .single();
+
+  const member = memberData as TripMemberRow | null;
+
+  if (!member) {
+    await supabase.from("trip_members").insert({
+      trip_id: share.trip_id,
+      user_id: user.dbId,
+      role: "editor" as MemberRole,
+    });
+  } else if (member.role === "viewer") {
+    await supabase
+      .from("trip_members")
+      .update({ role: "editor" as MemberRole })
+      .eq("id", member.id);
+  }
+  // owner / editor → no change
+
+  return { tripId: share.trip_id };
+}
