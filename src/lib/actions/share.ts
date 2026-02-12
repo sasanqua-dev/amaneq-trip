@@ -116,6 +116,175 @@ export async function revokeShareLink(shareId: string) {
   revalidatePath(`/trips/${share.trip_id}/share`);
 }
 
+export type TripMemberWithUser = {
+  id: string;
+  userId: string;
+  role: MemberRole;
+  joinedAt: string;
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+export async function getTripMembers(
+  tripId: string
+): Promise<{ members: TripMemberWithUser[]; currentUserRole: MemberRole }> {
+  const user = await ensureUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const supabase = createServerClient();
+
+  const { data: memberData } = await supabase
+    .from("trip_members")
+    .select()
+    .eq("trip_id", tripId)
+    .eq("user_id", user.dbId)
+    .single();
+
+  const currentMember = memberData as TripMemberRow | null;
+  if (!currentMember) throw new Error("Permission denied");
+
+  const { data, error } = await supabase
+    .from("trip_members")
+    .select("id, user_id, role, joined_at, users(id, email, display_name, avatar_url)")
+    .eq("trip_id", tripId)
+    .order("joined_at");
+
+  if (error) throw new Error(`Failed to get members: ${error.message}`);
+
+  const members: TripMemberWithUser[] = (data ?? []).map((m) => {
+    const u = (Array.isArray(m.users) ? m.users[0] : m.users) as {
+      id: string;
+      email: string;
+      display_name: string | null;
+      avatar_url: string | null;
+    };
+    return {
+      id: m.id as string,
+      userId: m.user_id as string,
+      role: m.role as MemberRole,
+      joinedAt: m.joined_at as string,
+      email: u.email,
+      displayName: u.display_name,
+      avatarUrl: u.avatar_url,
+    };
+  });
+
+  return { members, currentUserRole: currentMember.role };
+}
+
+export async function inviteMemberByEmail(
+  tripId: string,
+  email: string,
+  role: MemberRole
+): Promise<{ error?: string }> {
+  const user = await ensureUser();
+  if (!user) return { error: "認証エラー" };
+
+  const supabase = createServerClient();
+
+  // Check caller is owner or editor
+  const { data: callerData } = await supabase
+    .from("trip_members")
+    .select()
+    .eq("trip_id", tripId)
+    .eq("user_id", user.dbId)
+    .single();
+
+  const caller = callerData as TripMemberRow | null;
+  if (!caller || (caller.role !== "owner" && caller.role !== "editor")) {
+    return { error: "権限がありません" };
+  }
+
+  // Look up target user by email
+  const { data: targetUser } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", email)
+    .single();
+
+  if (!targetUser) {
+    return { error: "このメールアドレスのユーザーは登録されていません" };
+  }
+
+  // Check if already a member
+  const { data: existingMember } = await supabase
+    .from("trip_members")
+    .select("id")
+    .eq("trip_id", tripId)
+    .eq("user_id", targetUser.id)
+    .single();
+
+  if (existingMember) {
+    return { error: "このユーザーは既に参加しています" };
+  }
+
+  const { error } = await supabase.from("trip_members").insert({
+    trip_id: tripId,
+    user_id: targetUser.id,
+    role,
+  });
+
+  if (error) {
+    return { error: `招待に失敗しました: ${error.message}` };
+  }
+
+  revalidatePath(`/trips/${tripId}/share`);
+  return {};
+}
+
+export async function removeTripMember(
+  tripId: string,
+  memberId: string
+): Promise<{ error?: string }> {
+  const user = await ensureUser();
+  if (!user) return { error: "認証エラー" };
+
+  const supabase = createServerClient();
+
+  // Check caller is owner
+  const { data: callerData } = await supabase
+    .from("trip_members")
+    .select()
+    .eq("trip_id", tripId)
+    .eq("user_id", user.dbId)
+    .single();
+
+  const caller = callerData as TripMemberRow | null;
+  if (!caller || caller.role !== "owner") {
+    return { error: "オーナーのみメンバーを削除できます" };
+  }
+
+  // Get target member
+  const { data: targetData } = await supabase
+    .from("trip_members")
+    .select()
+    .eq("id", memberId)
+    .eq("trip_id", tripId)
+    .single();
+
+  const target = targetData as TripMemberRow | null;
+  if (!target) {
+    return { error: "メンバーが見つかりません" };
+  }
+
+  if (target.role === "owner") {
+    return { error: "オーナーは削除できません" };
+  }
+
+  const { error } = await supabase
+    .from("trip_members")
+    .delete()
+    .eq("id", memberId);
+
+  if (error) {
+    return { error: `削除に失敗しました: ${error.message}` };
+  }
+
+  revalidatePath(`/trips/${tripId}/share`);
+  return {};
+}
+
 export async function getSharedTripByToken(token: string) {
   const supabase = createServerClient();
 

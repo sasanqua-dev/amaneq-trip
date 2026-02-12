@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { ensureUser } from "@/lib/auth0";
-import { getShareLinks } from "@/lib/actions/share";
+import { getShareLinks, getTripMembers } from "@/lib/actions/share";
 import { SharePageClient } from "./share-page-client";
 
 interface SharePageProps {
@@ -13,11 +13,22 @@ export default async function SharePage({ params }: SharePageProps) {
   if (!user) return null;
 
   let shareLinks;
+  let membersData;
   try {
-    shareLinks = await getShareLinks(tripId);
+    [shareLinks, membersData] = await Promise.all([
+      getShareLinks(tripId),
+      getTripMembers(tripId),
+    ]);
   } catch {
     notFound();
   }
 
-  return <SharePageClient tripId={tripId} initialLinks={shareLinks} />;
+  return (
+    <SharePageClient
+      tripId={tripId}
+      initialLinks={shareLinks}
+      initialMembers={membersData.members}
+      currentUserRole={membersData.currentUserRole}
+    />
+  );
 }
