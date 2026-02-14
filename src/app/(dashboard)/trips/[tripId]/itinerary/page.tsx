@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { ItineraryTimeline } from "@/components/trips/itinerary-timeline";
 import { ItineraryForm } from "@/components/trips/itinerary-form";
 import { TransportForm } from "@/components/trips/transport-form";
+import { TrainSearchModal } from "@/components/trips/train-search-modal";
 import { createServerClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 
@@ -65,7 +66,8 @@ export default async function ItineraryPage({ params }: ItineraryPageProps) {
           </Link>
           <h1 className="text-2xl font-bold">行程</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <TrainSearchModal tripId={tripId} maxDay={maxDay} items={items} startDate={trip?.start_date ?? null} />
           <TransportForm tripId={tripId} maxDay={maxDay} items={items} />
           <ItineraryForm tripId={tripId} maxDay={maxDay} items={items} />
         </div>
