@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Loader2, MapPin, ExternalLink, X, Plus, Check } from "lucide-react";
+import { Sparkles, Loader2, MapPin, ExternalLink, X, Plus, Check, Footprints, Bike, Car, TrainFront } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -169,6 +169,26 @@ export function SpotRecommendations({
                       <p className="text-xs text-violet-600 mt-0.5">
                         {rec.reason}
                       </p>
+                      {rec.travelTime && (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                            <Footprints className="h-3 w-3" />
+                            {rec.travelTime.walk}
+                          </span>
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                            <Bike className="h-3 w-3" />
+                            {rec.travelTime.bicycle}
+                          </span>
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                            <Car className="h-3 w-3" />
+                            {rec.travelTime.car}
+                          </span>
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                            <TrainFront className="h-3 w-3" />
+                            {rec.travelTime.transit}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="shrink-0 flex items-center gap-1.5 mt-0.5">
                       {canAdd && (
