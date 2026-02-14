@@ -9,6 +9,7 @@ import { ItineraryForm } from '@/components/trips/itinerary-form';
 import { TransportForm } from '@/components/trips/transport-form';
 import { sortLinkedList } from '@/lib/utils/linked-list';
 import { getAirlineName } from '@/lib/utils/airline';
+import { SpotRecommendations } from '@/components/trips/spot-recommendations';
 import type { ItineraryItem } from '@/lib/types/itinerary';
 
 export type { ItineraryItem };
@@ -405,6 +406,16 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 
 																{/* Description / memo */}
 																{item.description && <p className="mt-1.5 text-sm text-muted-foreground">{item.description}</p>}
+
+																{/* Gemini recommendations */}
+																{item.category !== 'transport' && (
+																	<SpotRecommendations
+																		spotName={item.title}
+																		locationName={item.locationName}
+																		latitude={item.latitude}
+																		longitude={item.longitude}
+																	/>
+																)}
 															</div>
 															</div>
 															</div>
