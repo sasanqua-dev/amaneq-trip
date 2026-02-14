@@ -153,11 +153,16 @@ export async function searchTransitRoutes(
     return { routes: [], error: "Google Maps APIキーが設定されていません" };
   }
 
+  // Google Directions API returns ZERO_RESULTS for transit mode
+  // when departure_time is in the past. Fall back to "now".
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const effectiveDeparture = departureTimeUnix < nowUnix ? nowUnix : departureTimeUnix;
+
   const params = new URLSearchParams({
     origin,
     destination,
     mode: "transit",
-    departure_time: String(departureTimeUnix),
+    departure_time: String(effectiveDeparture),
     alternatives: "true",
     language: "ja",
     region: "jp",
@@ -171,10 +176,20 @@ export async function searchTransitRoutes(
     );
 
     if (!res.ok) {
+      console.error("[train-search] HTTP error:", res.status, res.statusText);
       return { routes: [], error: "経路の検索に失敗しました" };
     }
 
     const data: DirectionsResponse = await res.json();
+
+    if (data.status !== "OK") {
+      console.error(
+        "[train-search] API status:", data.status, data.error_message,
+        "| origin:", origin, "| destination:", destination,
+        "| departure_time:", effectiveDeparture,
+        "(", new Date(effectiveDeparture * 1000).toISOString(), ")"
+      );
+    }
 
     if (data.status === "ZERO_RESULTS") {
       return { routes: [], error: "該当する経路が見つかりませんでした" };
@@ -187,10 +202,18 @@ export async function searchTransitRoutes(
       };
     }
 
-    const routes = data.routes
-      .map(parseDirectionsRoute)
+    const parsed = data.routes.map(parseDirectionsRoute);
+    const routes = parsed
       .filter((r): r is TransitRoute => r !== null)
       .sort((a, b) => a.departureTimeUnix - b.departureTimeUnix);
+
+    if (routes.length === 0 && data.routes.length > 0) {
+      console.warn(
+        "[train-search] API returned",
+        data.routes.length,
+        "routes but all were filtered out (no transit steps)"
+      );
+    }
 
     // Deduplicate by departure+arrival time combo
     const seen = new Set<string>();

@@ -403,15 +403,32 @@ export function TrainSearchModal({
 
   const buildDepartureUnix = useCallback(
     (timeStr: string, offsetMinutes = 0) => {
+      const [h, m] = timeStr.split(":").map(Number);
+      const hh = String(h).padStart(2, "0");
+      const mm = String(m).padStart(2, "0");
+
+      // Try trip date first
       let dateStr: string;
       if (startDate) {
         dateStr = formatDate(startDate, Number(selectedDay));
       } else {
         dateStr = new Date().toISOString().slice(0, 10);
       }
-      const [h, m] = timeStr.split(":").map(Number);
-      const d = new Date(`${dateStr}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00+09:00`);
+
+      let d = new Date(`${dateStr}T${hh}:${mm}:00+09:00`);
       d.setMinutes(d.getMinutes() + offsetMinutes);
+
+      // If the calculated time is in the past, use today or tomorrow
+      // so that Google Directions API returns valid transit results.
+      if (d.getTime() < Date.now()) {
+        const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+        d = new Date(`${today}T${hh}:${mm}:00+09:00`);
+        d.setMinutes(d.getMinutes() + offsetMinutes);
+        if (d.getTime() < Date.now()) {
+          d.setDate(d.getDate() + 1);
+        }
+      }
+
       return Math.floor(d.getTime() / 1000);
     },
     [startDate, selectedDay]
