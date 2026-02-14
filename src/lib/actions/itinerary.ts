@@ -213,7 +213,9 @@ export async function addRecommendationToTimeline(
   prevItemId: string | null,
   name: string,
   category: string,
-  description: string
+  description: string,
+  photoUrl: string | null = null,
+  googlePlaceId: string | null = null
 ) {
   const user = await ensureUser();
   if (!user) throw new Error("Unauthorized");
@@ -242,8 +244,8 @@ export async function addRecommendationToTimeline(
     p_transport_type: null,
     p_car_number: null,
     p_seat_number: null,
-    p_photo_url: null,
-    p_google_place_id: null,
+    p_photo_url: photoUrl,
+    p_google_place_id: googlePlaceId,
   });
 
   if (error) throw new Error(`Failed to add recommendation: ${error.message}`);

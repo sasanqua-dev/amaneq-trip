@@ -10,6 +10,7 @@ import {
   type Recommendation,
 } from "@/lib/actions/recommendations";
 import { addRecommendationToTimeline } from "@/lib/actions/itinerary";
+import { loadPlacesLibrary } from "@/lib/google-maps";
 
 interface SpotRecommendationsProps {
   spotName: string;
@@ -83,13 +84,47 @@ export function SpotRecommendations({
     if (!tripId || dayNumber == null) return;
     setAddingIndex(index);
     try {
+      // Try to fetch photo and place ID from Google Places
+      let photoUrl: string | null = null;
+      let googlePlaceId: string | null = null;
+
+      try {
+        await loadPlacesLibrary();
+        const request: google.maps.places.SearchByTextRequest = {
+          textQuery: rec.name,
+          fields: ["id", "photos"],
+          maxResultCount: 1,
+          language: "ja",
+          region: "jp",
+        };
+        if (latitude != null && longitude != null) {
+          request.locationBias = new google.maps.Circle({
+            center: { lat: latitude, lng: longitude },
+            radius: 2000,
+          });
+        }
+        const { places } = await google.maps.places.Place.searchByText(request);
+
+        if (places && places.length > 0) {
+          const place = places[0];
+          googlePlaceId = place.id ?? null;
+          if (place.photos && place.photos.length > 0) {
+            photoUrl = place.photos[0].getURI({ maxWidth: 800 });
+          }
+        }
+      } catch {
+        // Photo fetch failed - continue without photo
+      }
+
       await addRecommendationToTimeline(
         tripId,
         dayNumber,
         parentItemId ?? null,
         rec.name,
         rec.category,
-        rec.description
+        rec.description,
+        photoUrl,
+        googlePlaceId
       );
       setAddedIndices((prev: Set<number>) => new Set(prev).add(index));
     } catch {
