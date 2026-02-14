@@ -49,6 +49,14 @@ interface TrainSearchModalProps {
   maxDay: number;
   items: ItineraryItem[];
   startDate: string | null;
+  // Controlled mode (for inline timeline buttons)
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  initialOrigin?: string;
+  initialDestination?: string;
+  initialDay?: number;
+  initialTime?: string;
+  initialPrevItemId?: string;
 }
 
 const FIRST_SENTINEL = "__first__";
@@ -338,8 +346,21 @@ export function TrainSearchModal({
   maxDay,
   items,
   startDate,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  initialOrigin,
+  initialDestination,
+  initialDay,
+  initialTime,
+  initialPrevItemId,
 }: TrainSearchModalProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled
+    ? (controlledOnOpenChange ?? (() => {}))
+    : setInternalOpen;
+
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [selectedDay, setSelectedDay] = useState("1");
@@ -367,12 +388,18 @@ export function TrainSearchModal({
     return sortLinkedList(filtered);
   }, [items, selectedDay]);
 
-  // Default to end of day's items
-  useEffect(() => {
-    setSelectedPrevItemId(
-      dayItems.length > 0 ? dayItems[dayItems.length - 1].id : FIRST_SENTINEL
+  function computeDefaultPrevItemId(day: string) {
+    const filtered = (items ?? []).filter(
+      (i) => i.dayNumber === Number(day)
     );
-  }, [dayItems]);
+    const sorted = sortLinkedList(filtered);
+    return sorted.length > 0 ? sorted[sorted.length - 1].id : FIRST_SENTINEL;
+  }
+
+  const handleDayChange = (newDay: string) => {
+    setSelectedDay(newDay);
+    setSelectedPrevItemId(computeDefaultPrevItemId(newDay));
+  };
 
   const buildDepartureUnix = useCallback(
     (timeStr: string, offsetMinutes = 0) => {
@@ -505,23 +532,35 @@ export function TrainSearchModal({
   }, [destination]);
 
   function handleOpenChange(newOpen: boolean) {
-    setOpen(newOpen);
-    if (!newOpen) {
-      setRoutes([]);
-      setHasSearched(false);
-      setSearchError(null);
-      setAddedRouteIndices(new Set());
+    if (newOpen) {
+      // Apply initial values (or reset to empty for standalone mode)
+      setOrigin(initialOrigin ?? "");
+      setDestination(initialDestination ?? "");
+      const day = initialDay ? String(initialDay) : "1";
+      setSelectedDay(day);
+      setDepartureTimeInput(initialTime ?? "08:00");
+      setSelectedPrevItemId(
+        initialPrevItemId ?? computeDefaultPrevItemId(day)
+      );
     }
+    // Clear search state on open and close
+    setRoutes([]);
+    setHasSearched(false);
+    setSearchError(null);
+    setAddedRouteIndices(new Set());
+    setOpen(newOpen);
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="outline">
-          <Search className="mr-2 h-4 w-4" />
-          経路検索
-        </Button>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Button variant="outline">
+            <Search className="mr-2 h-4 w-4" />
+            経路検索
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="flex max-h-[90vh] flex-col p-0 sm:max-w-lg">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle>経路検索</DialogTitle>
@@ -571,7 +610,7 @@ export function TrainSearchModal({
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-2">
               <Label>日目</Label>
-              <Select value={selectedDay} onValueChange={setSelectedDay}>
+              <Select value={selectedDay} onValueChange={handleDayChange}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

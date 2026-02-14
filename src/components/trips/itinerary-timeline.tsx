@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { MapPin, Trash2, Pencil, ArrowRight, TrainFront, Train, Bus, Ship, Plane, Car, Footprints, Bike, Camera, UtensilsCrossed, Hotel, CircleDot, ExternalLink, type LucideIcon } from 'lucide-react';
+import { MapPin, Trash2, Pencil, ArrowRight, TrainFront, Train, Bus, Ship, Plane, Car, Footprints, Bike, Camera, UtensilsCrossed, Hotel, CircleDot, ExternalLink, Search, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { deleteItineraryItem } from '@/lib/actions/itinerary';
 import { ItineraryForm } from '@/components/trips/itinerary-form';
@@ -10,6 +10,7 @@ import { TransportForm } from '@/components/trips/transport-form';
 import { sortLinkedList } from '@/lib/utils/linked-list';
 import { getAirlineName } from '@/lib/utils/airline';
 import { SpotRecommendations } from '@/components/trips/spot-recommendations';
+import { TrainSearchModal } from '@/components/trips/train-search-modal';
 import type { ItineraryItem } from '@/lib/types/itinerary';
 
 export type { ItineraryItem };
@@ -106,11 +107,32 @@ function formatDateWithWeekday(startDate: string, dayNumber: number): string {
 	return `${date.getMonth() + 1}/${date.getDate()}(${weekdays[date.getDay()]})`;
 }
 
+function getSearchOrigin(item: ItineraryItem): string {
+	if (item.category === 'transport') {
+		return item.arrivalName ?? '';
+	}
+	return item.locationName ?? item.title;
+}
+
+function getSearchDestination(item: ItineraryItem): string {
+	if (item.category === 'transport') {
+		return item.departureName ?? '';
+	}
+	return item.locationName ?? item.title;
+}
+
 export function ItineraryTimeline({ tripId, items, startDate, readOnly }: ItineraryTimelineProps) {
 	const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [activeDay, setActiveDay] = useState<number | null>(null);
 	const daySectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+	const [searchContext, setSearchContext] = useState<{
+		origin: string;
+		destination: string;
+		day: number;
+		time: string;
+		prevItemId: string;
+	} | null>(null);
 
 	const maxDay = items.length > 0 ? Math.max(...items.map((i) => i.dayNumber)) : 0;
 
@@ -167,6 +189,16 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 	function handleEditOpenChange(open: boolean) {
 		setEditDialogOpen(open);
 		if (!open) setEditingItem(null);
+	}
+
+	function handleTrainSearch(prevItem: ItineraryItem, nextItem: ItineraryItem | null, dayNumber: number) {
+		setSearchContext({
+			origin: getSearchOrigin(prevItem),
+			destination: nextItem ? getSearchDestination(nextItem) : '',
+			day: dayNumber,
+			time: prevItem.endTime?.slice(0, 5) ?? prevItem.startTime?.slice(0, 5) ?? '08:00',
+			prevItemId: prevItem.id,
+		});
 	}
 
 	function calcGapMinutes(endTime: string | undefined, nextStartTime: string | undefined): number | null {
@@ -230,6 +262,17 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 	if (items.length === 0) {
 		return <p className="text-muted-foreground">スポット・移動はまだありません。上のボタンから追加してください。</p>;
 	}
+
+	const searchButton = (onClick: () => void) => (
+		<button
+			type="button"
+			onClick={onClick}
+			className="ml-1 flex items-center gap-1 rounded-full border border-dashed border-transparent px-2 py-0.5 text-xs text-muted-foreground/0 opacity-0 group-hover/connector:opacity-100 group-hover/connector:text-muted-foreground group-hover/connector:border-muted-foreground/30 hover:!text-blue-600 hover:!border-blue-300 transition-all"
+		>
+			<Search className="h-3 w-3" />
+			経路検索
+		</button>
+	);
 
 	return (
 		<>
@@ -424,7 +467,7 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 
 													{/* Connector section with end time & gap info */}
 													{!isLast ? (
-														<div className="flex min-h-8">
+														<div className="group/connector flex min-h-8">
 															{/* End time + gap at bottom of connector */}
 															<div className="w-14 shrink-0 flex flex-col items-end justify-center gap-0.5 pr-1 py-1.5 overflow-visible">
 																{endTime && <p className="text-xs tabular-nums text-muted-foreground leading-none whitespace-nowrap">{endTime}</p>}
@@ -446,15 +489,19 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 															<div className="mx-3 flex justify-center w-8">
 																<div className={cn('w-0.5', lineColors[category] ?? 'bg-gray-200')} />
 															</div>
-															<div className="flex-1" />
+															<div className="flex-1 flex items-center">
+																{!readOnly && tripId && searchButton(() => handleTrainSearch(item, nextItem, dayNum))}
+															</div>
 														</div>
 													) : endTime ? (
-														<div className="flex pt-1.5">
+														<div className="group/connector flex pt-1.5">
 															<div className="w-14 shrink-0 text-right pr-1">
 																<p className="text-xs tabular-nums text-muted-foreground leading-none">{endTime}</p>
 															</div>
 															<div className="mx-3 w-8" />
-															<div className="flex-1" />
+															<div className="flex-1 flex items-center">
+																{!readOnly && tripId && searchButton(() => handleTrainSearch(item, null, dayNum))}
+															</div>
 														</div>
 													) : null}
 												</div>
@@ -472,6 +519,22 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 			) : !readOnly && tripId && editingItem ? (
 				<ItineraryForm tripId={tripId} maxDay={maxDay} items={items} editItem={editingItem} open={editDialogOpen} onOpenChange={handleEditOpenChange} />
 			) : null}
+
+			{!readOnly && tripId && (
+				<TrainSearchModal
+					tripId={tripId}
+					maxDay={maxDay}
+					items={items}
+					startDate={startDate}
+					open={searchContext !== null}
+					onOpenChange={(o) => { if (!o) setSearchContext(null); }}
+					initialOrigin={searchContext?.origin}
+					initialDestination={searchContext?.destination}
+					initialDay={searchContext?.day}
+					initialTime={searchContext?.time}
+					initialPrevItemId={searchContext?.prevItemId}
+				/>
+			)}
 		</>
 	);
 }
