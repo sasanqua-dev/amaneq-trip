@@ -1,0 +1,449 @@
+import { useState, useEffect, useRef } from "react";
+import { Button } from "~/components/ui/button";
+import { MapPin, Trash2, Pencil, ArrowRight, ExternalLink, Search } from "lucide-react";
+import {
+  transportIcons,
+  categoryIcons,
+  TrainIcon,
+  OtherIcon,
+  type TransportIconComponent,
+} from "~/components/icons/transport-icons";
+import { cn } from "~/lib/utils";
+import { ItineraryForm } from "~/components/trips/itinerary-form";
+import { TransportForm } from "~/components/trips/transport-form";
+import { sortLinkedList } from "~/lib/utils/linked-list";
+import { getAirlineName } from "~/lib/utils/airline";
+import type { ItineraryItem } from "~/lib/types/itinerary";
+
+export type { ItineraryItem };
+
+interface ItineraryTimelineProps {
+  tripId?: string;
+  items: ItineraryItem[];
+  startDate: string | null;
+  readOnly?: boolean;
+  onDeleted?: () => void;
+  onUpdated?: () => void;
+}
+
+const transportTypeLabels: Record<string, string> = {
+  shinkansen: "新幹線",
+  express: "特急",
+  local_train: "在来線",
+  bus: "バス",
+  ship: "船",
+  airplane: "飛行機",
+  car: "車",
+  taxi: "タクシー",
+  walk: "徒歩",
+  bicycle: "自転車",
+  other: "その他",
+};
+
+const nodeColors: Record<string, string> = {
+  transport: "bg-blue-100 text-blue-600",
+  sightseeing: "bg-emerald-100 text-emerald-600",
+  meal: "bg-orange-100 text-orange-600",
+  accommodation: "bg-purple-100 text-purple-600",
+  other: "bg-gray-100 text-gray-500",
+};
+
+const lineColors: Record<string, string> = {
+  transport: "bg-blue-200",
+  sightseeing: "bg-emerald-200",
+  meal: "bg-orange-200",
+  accommodation: "bg-purple-200",
+  other: "bg-gray-200",
+};
+
+function getItemIcon(item: ItineraryItem): TransportIconComponent {
+  if (item.category === "transport" && item.transportType) {
+    return transportIcons[item.transportType] ?? TrainIcon;
+  }
+  return categoryIcons[item.category ?? "other"] ?? OtherIcon;
+}
+
+function getGoogleMapsUrl(item: ItineraryItem): string | null {
+  if (item.googlePlaceId) {
+    return `https://www.google.com/maps/place/?q=place_id:${item.googlePlaceId}`;
+  }
+  if (item.latitude != null && item.longitude != null) {
+    return `https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`;
+  }
+  const name = item.locationName ?? item.title;
+  if (name) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
+  }
+  return null;
+}
+
+function formatDate(startDate: string, dayNumber: number): string {
+  const date = new Date(startDate);
+  date.setDate(date.getDate() + dayNumber - 1);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function formatDateWithWeekday(startDate: string, dayNumber: number): string {
+  const date = new Date(startDate);
+  date.setDate(date.getDate() + dayNumber - 1);
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${date.getMonth() + 1}/${date.getDate()}(${weekdays[date.getDay()]})`;
+}
+
+function calcGapMinutes(endTime: string | undefined, nextStartTime: string | undefined): number | null {
+  if (!endTime || !nextStartTime) return null;
+  const [eh, em] = endTime.split(":").map(Number);
+  const [sh, sm] = nextStartTime.split(":").map(Number);
+  const diff = sh * 60 + sm - (eh * 60 + em);
+  return diff > 0 ? diff : null;
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes >= 60) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m > 0 ? `${h}時間${m}分` : `${h}時間`;
+  }
+  return `${minutes}分`;
+}
+
+function computeBlockFreeTime(sorted: ItineraryItem[]): Map<number, { freeMinutes: number; totalMinutes: number; usedMinutes: number }> {
+  const result = new Map<number, { freeMinutes: number; totalMinutes: number; usedMinutes: number }>();
+
+  let blockEndTime: string | null = null;
+  let accumulatedDuration = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const item = sorted[i];
+    const st = item.startTime?.slice(0, 5);
+    const et = item.endTime?.slice(0, 5);
+
+    if (st && blockEndTime !== null && accumulatedDuration > 0) {
+      const [sh, sm] = st.split(":").map(Number);
+      const [eh, em] = blockEndTime.split(":").map(Number);
+      const totalMinutes = sh * 60 + sm - (eh * 60 + em);
+
+      if (totalMinutes > 0) {
+        const freeMinutes = totalMinutes - accumulatedDuration;
+        result.set(i - 1, { freeMinutes, totalMinutes, usedMinutes: accumulatedDuration });
+      }
+    }
+
+    if (st) {
+      accumulatedDuration = 0;
+    }
+
+    if (et) {
+      blockEndTime = et;
+      accumulatedDuration = 0;
+    } else if (item.durationMinutes) {
+      accumulatedDuration += item.durationMinutes;
+    }
+  }
+
+  return result;
+}
+
+export function ItineraryTimeline({ tripId, items, startDate, readOnly, onDeleted, onUpdated }: ItineraryTimelineProps) {
+  const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [activeDay, setActiveDay] = useState<number | null>(null);
+  const daySectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
+  const maxDay = items.length > 0 ? Math.max(...items.map((i) => i.dayNumber)) : 0;
+
+  const groupedByDay = items.reduce(
+    (acc, item) => {
+      if (!acc[item.dayNumber]) {
+        acc[item.dayNumber] = [];
+      }
+      acc[item.dayNumber].push(item);
+      return acc;
+    },
+    {} as Record<number, ItineraryItem[]>,
+  );
+
+  const dayNumbers = Object.keys(groupedByDay)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const showSidebar = dayNumbers.length >= 2;
+
+  useEffect(() => {
+    if (!showSidebar) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length > 0) {
+          const day = Number(visible[0].target.getAttribute("data-day"));
+          setActiveDay(day);
+        }
+      },
+      { rootMargin: "-20% 0px -60% 0px", threshold: 0 },
+    );
+
+    for (const day of dayNumbers) {
+      const el = daySectionRefs.current[day];
+      if (el) observer.observe(el);
+    }
+
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSidebar, dayNumbers.join(",")]);
+
+  function scrollToDay(day: number) {
+    const el = daySectionRefs.current[day];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function handleEdit(item: ItineraryItem) {
+    setEditingItem(item);
+    setEditDialogOpen(true);
+  }
+
+  function handleEditOpenChange(open: boolean) {
+    setEditDialogOpen(open);
+    if (!open) {
+      setEditingItem(null);
+      onUpdated?.();
+    }
+  }
+
+  if (items.length === 0) {
+    return <p className="text-muted-foreground">スポット・移動はまだありません。上のボタンから追加してください。</p>;
+  }
+
+  return (
+    <>
+      <div className={cn("relative", showSidebar && "flex gap-6")}>
+        {showSidebar && (
+          <nav className="hidden md:block sticky top-20 self-start w-24 shrink-0">
+            <ul className="space-y-1">
+              {dayNumbers.map((day) => (
+                <li key={day}>
+                  <button
+                    onClick={() => scrollToDay(day)}
+                    className={cn(
+                      "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                      activeDay === day ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <span className="block text-xs">Day {day}</span>
+                    {startDate && <span className="block text-xs mt-0.5">{formatDate(startDate, day)}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+
+        <div className="flex-1 min-w-0 space-y-8">
+          {Object.entries(groupedByDay)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([day, dayItems]) => {
+              const sorted = sortLinkedList(dayItems);
+              const freeTimeBlocks = computeBlockFreeTime(sorted);
+              const dayNum = Number(day);
+              return (
+                <div
+                  key={day}
+                  ref={(el) => {
+                    daySectionRefs.current[dayNum] = el;
+                  }}
+                  data-day={day}
+                  className="scroll-mt-20"
+                >
+                  <h2 className="mb-4 text-lg font-semibold">
+                    Day {day}
+                    {startDate && <span className="ml-2 text-sm font-normal text-muted-foreground">{formatDateWithWeekday(startDate, dayNum)}</span>}
+                  </h2>
+                  <div className="relative">
+                    {sorted.map((item, index) => {
+                      const Icon = getItemIcon(item);
+                      const category = item.category ?? "other";
+                      const isLast = index === sorted.length - 1;
+                      const startTime = item.startTime?.slice(0, 5);
+                      const endTime = item.endTime?.slice(0, 5);
+                      const durationLabel = !startTime && !endTime && item.durationMinutes ? `約${formatMinutes(item.durationMinutes)}` : null;
+                      const nextItem = !isLast ? sorted[index + 1] : null;
+                      const nextStartTime = nextItem?.startTime?.slice(0, 5);
+                      const gapMinutes = calcGapMinutes(endTime, nextStartTime);
+                      const freeTimeInfo = freeTimeBlocks.get(index);
+
+                      return (
+                        <div key={item.id}>
+                          <div className="relative flex">
+                            <div className="w-14 shrink-0 pt-1.5 text-right">
+                              {startTime ? (
+                                <p className="text-sm font-semibold tabular-nums leading-none">{startTime}</p>
+                              ) : durationLabel ? (
+                                <p className="text-xs font-medium text-muted-foreground leading-none whitespace-nowrap">{durationLabel}</p>
+                              ) : null}
+                            </div>
+
+                            <div className="mx-3 flex flex-col items-center">
+                              <div
+                                className={cn(
+                                  "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-background",
+                                  nodeColors[category] ?? "bg-gray-100 text-gray-500",
+                                )}
+                              >
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              {!isLast && <div className={cn("w-0.5 flex-1", lineColors[category] ?? "bg-gray-200")} />}
+                            </div>
+
+                            <div className="flex-1 min-w-0 -mt-0.5">
+                              <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+                                <div className={cn(item.photoUrl && "sm:flex")}>
+                                  {item.photoUrl && (
+                                    <div className="relative h-32 sm:h-auto sm:w-40 md:w-48 shrink-0">
+                                      <img
+                                        src={item.photoUrl}
+                                        alt={item.title}
+                                        className="h-full w-full object-cover"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="px-4 py-3 flex-1 min-w-0">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <h3 className="font-medium leading-snug">{item.title}</h3>
+                                      {!readOnly && tripId && (
+                                        <div className="flex shrink-0 items-center -mr-1 -mt-0.5">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                            onClick={() => handleEdit(item)}
+                                          >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                            onClick={() => {
+                                              onDeleted?.();
+                                            }}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                                      {item.category === "transport" && (item.departureName || item.arrivalName) ? (
+                                        <span className="flex items-center gap-1">
+                                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                                          {item.departureName ?? ""}
+                                          {item.departureName && item.arrivalName && <ArrowRight className="mx-0.5 h-3 w-3 shrink-0" />}
+                                          {item.arrivalName ?? ""}
+                                        </span>
+                                      ) : item.locationName ? (
+                                        <span className="flex items-center gap-1">
+                                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                                          {item.locationName}
+                                        </span>
+                                      ) : null}
+                                      {(() => {
+                                        if (item.category === "transport") return null;
+                                        const mapsUrl = getGoogleMapsUrl(item);
+                                        return mapsUrl ? (
+                                          <a
+                                            href={mapsUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                          >
+                                            <ExternalLink className="h-3 w-3 shrink-0" />
+                                            Google Maps
+                                          </a>
+                                        ) : null;
+                                      })()}
+                                    </div>
+
+                                    {item.category === "transport" && item.transportType && (
+                                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                          {transportTypeLabels[item.transportType] ?? item.transportType}
+                                        </span>
+                                        {item.transportType === "airplane" && (() => {
+                                          const airline = getAirlineName(item.title);
+                                          return airline ? <span className="text-xs text-muted-foreground">{airline}</span> : null;
+                                        })()}
+                                        {item.carNumber && <span className="text-xs text-muted-foreground">{item.carNumber}号車</span>}
+                                        {item.seatNumber && <span className="text-xs text-muted-foreground">座席 {item.seatNumber}</span>}
+                                      </div>
+                                    )}
+
+                                    {item.description && <p className="mt-1.5 text-sm text-muted-foreground">{item.description}</p>}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {!isLast ? (
+                            <div className="group/connector flex min-h-8">
+                              <div className="w-14 shrink-0 flex flex-col items-end justify-center gap-0.5 pr-1 py-1.5 overflow-visible">
+                                {endTime && <p className="text-xs tabular-nums text-muted-foreground leading-none whitespace-nowrap">{endTime}</p>}
+                                {gapMinutes !== null && (
+                                  <p className="text-xs tabular-nums font-medium text-amber-600 leading-none whitespace-nowrap">{formatMinutes(gapMinutes)}</p>
+                                )}
+                                {freeTimeInfo && (
+                                  <p className={cn(
+                                    "text-xs tabular-nums font-medium leading-none whitespace-nowrap",
+                                    freeTimeInfo.freeMinutes >= 0 ? "text-amber-600" : "text-red-600",
+                                  )}>
+                                    {freeTimeInfo.freeMinutes >= 0
+                                      ? formatMinutes(freeTimeInfo.freeMinutes)
+                                      : `${formatMinutes(Math.abs(freeTimeInfo.freeMinutes))}超過`}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="mx-3 flex justify-center w-8">
+                                <div className={cn("w-0.5", lineColors[category] ?? "bg-gray-200")} />
+                              </div>
+                              <div className="flex-1 flex items-center">
+                                {!readOnly && tripId && (
+                                  <button
+                                    type="button"
+                                    className="ml-1 flex items-center gap-1 rounded-full border border-dashed border-transparent px-2 py-0.5 text-xs text-muted-foreground/0 opacity-0 group-hover/connector:opacity-100 group-hover/connector:text-muted-foreground group-hover/connector:border-muted-foreground/30 hover:!text-blue-600 hover:!border-blue-300 transition-all"
+                                  >
+                                    <Search className="h-3 w-3" />
+                                    経路検索
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : endTime ? (
+                            <div className="group/connector flex pt-1.5">
+                              <div className="w-14 shrink-0 text-right pr-1">
+                                <p className="text-xs tabular-nums text-muted-foreground leading-none">{endTime}</p>
+                              </div>
+                              <div className="mx-3 w-8" />
+                              <div className="flex-1" />
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+
+      {!readOnly && tripId && editingItem && editingItem.category === "transport" ? (
+        <TransportForm tripId={tripId} maxDay={maxDay} items={items} editItem={editingItem} open={editDialogOpen} onOpenChange={handleEditOpenChange} />
+      ) : !readOnly && tripId && editingItem ? (
+        <ItineraryForm tripId={tripId} maxDay={maxDay} items={items} editItem={editingItem} open={editDialogOpen} onOpenChange={handleEditOpenChange} />
+      ) : null}
+    </>
+  );
+}
