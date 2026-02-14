@@ -1,19 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Loader2, MapPin, ExternalLink, X } from "lucide-react";
+import { Sparkles, Loader2, MapPin, ExternalLink, X, Plus, Check } from "lucide-react";
+import { WalkIcon, BicycleIcon, CarIcon, BulletTrainIcon } from "@/components/icons/transport-icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   getSpotRecommendations,
   type Recommendation,
 } from "@/lib/actions/recommendations";
+import { addRecommendationToTimeline } from "@/lib/actions/itinerary";
+import { loadPlacesLibrary } from "@/lib/google-maps";
 
 interface SpotRecommendationsProps {
   spotName: string;
   locationName: string | null;
   latitude: number | null;
   longitude: number | null;
+  tripId?: string;
+  dayNumber?: number;
+  parentItemId?: string;
+  readOnly?: boolean;
 }
 
 const categoryColors: Record<string, string> = {
@@ -34,11 +41,18 @@ export function SpotRecommendations({
   locationName,
   latitude,
   longitude,
+  tripId,
+  dayNumber,
+  parentItemId,
+  readOnly,
 }: SpotRecommendationsProps) {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [addingIndex, setAddingIndex] = useState<number | null>(null);
+  const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set());
+  const canAdd = !!tripId && dayNumber != null && !readOnly;
 
   async function handleFetch() {
     if (open && recommendations.length > 0) {
@@ -64,6 +78,60 @@ export function SpotRecommendations({
     }
 
     setLoading(false);
+  }
+
+  async function handleAdd(rec: Recommendation, index: number) {
+    if (!tripId || dayNumber == null) return;
+    setAddingIndex(index);
+    try {
+      // Try to fetch photo and place ID from Google Places
+      let photoUrl: string | null = null;
+      let googlePlaceId: string | null = null;
+
+      try {
+        await loadPlacesLibrary();
+        const request: google.maps.places.SearchByTextRequest = {
+          textQuery: rec.name,
+          fields: ["id", "photos"],
+          maxResultCount: 1,
+          language: "ja",
+          region: "jp",
+        };
+        if (latitude != null && longitude != null) {
+          request.locationBias = new google.maps.Circle({
+            center: { lat: latitude, lng: longitude },
+            radius: 2000,
+          });
+        }
+        const { places } = await google.maps.places.Place.searchByText(request);
+
+        if (places && places.length > 0) {
+          const place = places[0];
+          googlePlaceId = place.id ?? null;
+          if (place.photos && place.photos.length > 0) {
+            photoUrl = place.photos[0].getURI({ maxWidth: 800 });
+          }
+        }
+      } catch {
+        // Photo fetch failed - continue without photo
+      }
+
+      await addRecommendationToTimeline(
+        tripId,
+        dayNumber,
+        parentItemId ?? null,
+        rec.name,
+        rec.category,
+        rec.description,
+        photoUrl,
+        googlePlaceId
+      );
+      setAddedIndices((prev: Set<number>) => new Set(prev).add(index));
+    } catch {
+      // silently ignore – the user can retry
+    } finally {
+      setAddingIndex(null);
+    }
   }
 
   return (
@@ -137,16 +205,61 @@ export function SpotRecommendations({
                       <p className="text-xs text-violet-600 mt-0.5">
                         {rec.reason}
                       </p>
+                      {rec.travelTime && (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                            <WalkIcon className="h-3 w-3" />
+                            {rec.travelTime.walk}
+                          </span>
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                            <BicycleIcon className="h-3 w-3" />
+                            {rec.travelTime.bicycle}
+                          </span>
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                            <CarIcon className="h-3 w-3" />
+                            {rec.travelTime.car}
+                          </span>
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                            <BulletTrainIcon className="h-3 w-3" />
+                            {rec.travelTime.transit}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <a
-                      href={getGoogleMapsSearchUrl(rec.name)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 flex items-center gap-0.5 text-[10px] text-blue-600 hover:text-blue-800 hover:underline mt-0.5"
-                    >
-                      <MapPin className="h-3 w-3" />
-                      <ExternalLink className="h-2.5 w-2.5" />
-                    </a>
+                    <div className="shrink-0 flex items-center gap-1.5 mt-0.5">
+                      {canAdd && (
+                        addedIndices.has(i) ? (
+                          <span className="flex items-center gap-0.5 text-[10px] text-emerald-600">
+                            <Check className="h-3 w-3" />
+                            追加済
+                          </span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 gap-0.5 px-1.5 text-[10px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                            disabled={addingIndex === i}
+                            onClick={() => handleAdd(rec, i)}
+                          >
+                            {addingIndex === i ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Plus className="h-3 w-3" />
+                            )}
+                            追加
+                          </Button>
+                        )
+                      )}
+                      <a
+                        href={getGoogleMapsSearchUrl(rec.name)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-0.5 text-[10px] text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        <MapPin className="h-3 w-3" />
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    </div>
                   </div>
                 </li>
               ))}

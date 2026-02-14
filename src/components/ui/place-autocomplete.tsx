@@ -3,7 +3,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { loadPlacesLibrary } from "@/lib/google-maps";
-import { MapPin } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import { PlaceSuggestionList, type PlaceSuggestion } from "@/components/ui/place-suggestion-list";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import { Search } from "lucide-react";
 
 export interface PlaceResult {
   placeId: string;
@@ -13,12 +22,6 @@ export interface PlaceResult {
   latitude: number;
   longitude: number;
   photoUrl: string | null;
-}
-
-interface Suggestion {
-  placeId: string;
-  mainText: string;
-  secondaryText: string;
 }
 
 interface PlaceAutocompleteProps {
@@ -40,13 +43,17 @@ export function PlaceAutocomplete({
   id,
   includedPrimaryTypes,
 }: PlaceAutocompleteProps) {
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [ready, setReady] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetInput, setSheetInput] = useState("");
 
+  const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sheetInputRef = useRef<HTMLInputElement>(null);
 
   // Load Google Places library
   useEffect(() => {
@@ -63,8 +70,9 @@ export function PlaceAutocomplete({
     };
   }, []);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click (desktop only)
   useEffect(() => {
+    if (isMobile) return;
     function handleClickOutside(e: MouseEvent) {
       if (
         containerRef.current &&
@@ -75,13 +83,13 @@ export function PlaceAutocomplete({
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [isMobile]);
 
   const fetchSuggestions = useCallback(
     async (input: string) => {
       if (!ready || input.length < 2) {
         setSuggestions([]);
-        setIsOpen(false);
+        if (!isMobile) setIsOpen(false);
         return;
       }
 
@@ -96,7 +104,7 @@ export function PlaceAutocomplete({
             }
           );
 
-        const mapped: Suggestion[] = results
+        const mapped: PlaceSuggestion[] = results
           .filter((s) => s.placePrediction)
           .map((s) => ({
             placeId: s.placePrediction!.placeId,
@@ -105,30 +113,47 @@ export function PlaceAutocomplete({
           }));
 
         setSuggestions(mapped);
-        setIsOpen(mapped.length > 0);
+        if (!isMobile) {
+          setIsOpen(mapped.length > 0);
+        }
         setActiveIndex(-1);
       } catch {
         setSuggestions([]);
-        setIsOpen(false);
+        if (!isMobile) setIsOpen(false);
       }
     },
-    [ready, includedPrimaryTypes]
+    [ready, includedPrimaryTypes, isMobile]
   );
+
+  function debouncedFetch(input: string) {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      fetchSuggestions(input);
+    }, 300);
+  }
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     onChange(val);
-
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      fetchSuggestions(val);
-    }, 300);
+    debouncedFetch(val);
   }
 
-  async function handleSelect(suggestion: Suggestion) {
+  function handleSheetInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setSheetInput(val);
+    onChange(val);
+    debouncedFetch(val);
+  }
+
+  async function handleSelect(suggestion: PlaceSuggestion) {
     onChange(suggestion.mainText);
     setIsOpen(false);
     setSuggestions([]);
+
+    if (isMobile) {
+      setSheetOpen(false);
+      setSheetInput("");
+    }
 
     try {
       const place = new google.maps.places.Place({
@@ -185,50 +210,100 @@ export function PlaceAutocomplete({
     }
   }
 
+  function handleMobileFocus() {
+    setSheetInput(value);
+    setSheetOpen(true);
+  }
+
+  function handleSheetOpenChange(open: boolean) {
+    setSheetOpen(open);
+    if (!open) {
+      setSuggestions([]);
+      setSheetInput("");
+    }
+  }
+
   return (
     <div ref={containerRef} className="relative">
-      <Input
-        id={id}
-        value={value}
-        onChange={handleInputChange}
-        onKeyDown={handleKeyDown}
-        onFocus={() => {
-          if (suggestions.length > 0) setIsOpen(true);
-        }}
-        placeholder={placeholder}
-        required={required}
-        autoComplete="off"
-      />
-      {isOpen && suggestions.length > 0 && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
-          <ul className="max-h-60 overflow-y-auto py-1">
-            {suggestions.map((suggestion, index) => (
-              <li key={suggestion.placeId}>
-                <button
-                  type="button"
-                  className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent ${
-                    index === activeIndex ? "bg-accent" : ""
-                  }`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    handleSelect(suggestion);
-                  }}
-                  onMouseEnter={() => setActiveIndex(index)}
-                >
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">
-                      {suggestion.mainText}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {suggestion.secondaryText}
-                    </div>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {isMobile ? (
+        <>
+          <Input
+            id={id}
+            value={value}
+            onFocus={handleMobileFocus}
+            readOnly
+            placeholder={placeholder}
+            required={required}
+            autoComplete="off"
+          />
+          <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+            <SheetContent
+              side="bottom"
+              className="h-[70vh] rounded-t-xl"
+              showCloseButton={false}
+            >
+              <SheetHeader className="pb-0">
+                <SheetTitle>場所を検索</SheetTitle>
+                <SheetDescription className="sr-only">
+                  場所の名前を入力してください
+                </SheetDescription>
+              </SheetHeader>
+              <div className="flex flex-col gap-2 px-4 pb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    ref={sheetInputRef}
+                    value={sheetInput}
+                    onChange={handleSheetInputChange}
+                    placeholder={placeholder}
+                    autoComplete="off"
+                    autoFocus
+                    className="pl-9"
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <PlaceSuggestionList
+                    suggestions={suggestions}
+                    activeIndex={activeIndex}
+                    onSelect={handleSelect}
+                  />
+                  {sheetInput.length >= 2 && suggestions.length === 0 && (
+                    <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                      候補が見つかりません
+                    </p>
+                  )}
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </>
+      ) : (
+        <>
+          <Input
+            id={id}
+            value={value}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              if (suggestions.length > 0) setIsOpen(true);
+            }}
+            placeholder={placeholder}
+            required={required}
+            autoComplete="off"
+          />
+          {isOpen && suggestions.length > 0 && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+              <div className="max-h-60 overflow-y-auto">
+                <PlaceSuggestionList
+                  suggestions={suggestions}
+                  activeIndex={activeIndex}
+                  onSelect={handleSelect}
+                  onHover={setActiveIndex}
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

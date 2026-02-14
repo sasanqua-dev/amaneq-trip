@@ -2,11 +2,19 @@
 
 import { getGeminiClient } from "@/lib/gemini";
 
+export interface TravelTime {
+  walk: string;
+  bicycle: string;
+  car: string;
+  transit: string;
+}
+
 export interface Recommendation {
   name: string;
   category: string;
   description: string;
   reason: string;
+  travelTime: TravelTime;
 }
 
 export interface RecommendationsResult {
@@ -43,6 +51,8 @@ export async function getSpotRecommendations(
 - カテゴリは「グルメ」「カフェ」「観光」「ショッピング」「体験」「温泉・リラクゼーション」から選んでください
 - 徒歩圏内〜近距離のものを優先してください
 - 地元ならではの場所を優先してください
+- 各おすすめについて、スポットからのおおよその移動時間を「徒歩」「自転車」「自動車」「公共交通機関」の4つの手段でそれぞれ見積もってください
+- 移動時間は「約5分」「約15分」のように「約○分」の形式で回答してください
 
 以下のJSON形式で回答してください。JSON以外は出力しないでください:
 [
@@ -50,7 +60,13 @@ export async function getSpotRecommendations(
     "name": "施設名",
     "category": "カテゴリ",
     "description": "施設の簡単な説明（30文字以内）",
-    "reason": "おすすめの理由（40文字以内）"
+    "reason": "おすすめの理由（40文字以内）",
+    "travelTime": {
+      "walk": "徒歩での所要時間（例: 約10分）",
+      "bicycle": "自転車での所要時間（例: 約5分）",
+      "car": "自動車での所要時間（例: 約3分）",
+      "transit": "公共交通機関での所要時間（例: 約8分）"
+    }
   }
 ]`;
 
