@@ -1,7 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules
+dist
 /.pnp
 .pnp.*
 .yarn/*
@@ -44,6 +45,14 @@ supabase/.temp/
 
 # misc artifacts
 nul
+
+# root markdown files (keep conventional ones)
+/*.md
+!/README.md
+!/CONTRIBUTING.md
+!/CHANGELOG.md
+!/LICENSE.md
+!/CODE_OF_CONDUCT.md
 
 # typescript
 *.tsbuildinfo
