@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { MapPin, Trash2, Pencil, ArrowRight, TrainFront, Train, Bus, Ship, Plane, Car, Footprints, Bike, Camera, UtensilsCrossed, Hotel, CircleDot, ExternalLink, Search, type LucideIcon } from 'lucide-react';
+import { MapPin, Trash2, Pencil, ArrowRight, ExternalLink, Search } from 'lucide-react';
+import {
+	transportIcons,
+	categoryIcons,
+	TrainIcon,
+	OtherIcon,
+	type TransportIconComponent,
+} from '@/components/icons/transport-icons';
 import { cn } from '@/lib/utils';
 import { deleteItineraryItem } from '@/lib/actions/itinerary';
 import { ItineraryForm } from '@/components/trips/itinerary-form';
@@ -36,26 +43,7 @@ const transportTypeLabels: Record<string, string> = {
 	other: 'その他',
 };
 
-const transportIcons: Record<string, LucideIcon> = {
-	shinkansen: TrainFront,
-	express: TrainFront,
-	local_train: Train,
-	bus: Bus,
-	ship: Ship,
-	airplane: Plane,
-	car: Car,
-	taxi: Car,
-	walk: Footprints,
-	bicycle: Bike,
-	other: Train,
-};
-
-const categoryIcons: Record<string, LucideIcon> = {
-	sightseeing: Camera,
-	meal: UtensilsCrossed,
-	accommodation: Hotel,
-	other: CircleDot,
-};
+/* transportIcons / categoryIcons は @/components/icons/transport-icons から import 済み */
 
 const nodeColors: Record<string, string> = {
 	transport: 'bg-blue-100 text-blue-600',
@@ -73,11 +61,11 @@ const lineColors: Record<string, string> = {
 	other: 'bg-gray-200',
 };
 
-function getItemIcon(item: ItineraryItem): LucideIcon {
+function getItemIcon(item: ItineraryItem): TransportIconComponent {
 	if (item.category === 'transport' && item.transportType) {
-		return transportIcons[item.transportType] ?? Train;
+		return transportIcons[item.transportType] ?? TrainIcon;
 	}
-	return categoryIcons[item.category ?? 'other'] ?? CircleDot;
+	return categoryIcons[item.category ?? 'other'] ?? OtherIcon;
 }
 
 function getGoogleMapsUrl(item: ItineraryItem): string | null {
