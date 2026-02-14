@@ -93,8 +93,8 @@ export function SpotRecommendations({
           textQuery: rec.name,
           fields: ["id", "photos"],
           maxResultCount: 1,
-          languageCode: "ja",
-          regionCode: "jp",
+          language: "ja",
+          region: "jp",
         };
         if (latitude != null && longitude != null) {
           request.locationBias = new google.maps.Circle({
