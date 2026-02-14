@@ -198,6 +198,61 @@ export async function updateItineraryItem(formData: FormData) {
   revalidatePath("/map");
 }
 
+const recommendationCategoryMap: Record<string, string> = {
+  グルメ: "meal",
+  カフェ: "meal",
+  観光: "sightseeing",
+  ショッピング: "other",
+  体験: "sightseeing",
+  "温泉・リラクゼーション": "other",
+};
+
+export async function addRecommendationToTimeline(
+  tripId: string,
+  dayNumber: number,
+  prevItemId: string | null,
+  name: string,
+  category: string,
+  description: string
+) {
+  const user = await ensureUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const supabase = createServerClient();
+  await checkMembership(supabase, tripId, user.dbId);
+
+  const itineraryCategory = recommendationCategoryMap[category] ?? "other";
+
+  const { error } = await supabase.rpc("create_itinerary_item", {
+    p_trip_id: tripId,
+    p_day_number: dayNumber,
+    p_prev_item_id: prevItemId,
+    p_title: name,
+    p_description: description,
+    p_location_name: null,
+    p_departure_name: null,
+    p_arrival_name: null,
+    p_prefecture_code: null,
+    p_latitude: null,
+    p_longitude: null,
+    p_start_time: null,
+    p_end_time: null,
+    p_duration_minutes: null,
+    p_category: itineraryCategory,
+    p_transport_type: null,
+    p_car_number: null,
+    p_seat_number: null,
+    p_photo_url: null,
+    p_google_place_id: null,
+  });
+
+  if (error) throw new Error(`Failed to add recommendation: ${error.message}`);
+
+  revalidatePath(`/trips/${tripId}/itinerary`);
+  revalidatePath(`/trips/${tripId}`);
+  revalidatePath("/map");
+}
+
 export async function deleteItineraryItem(itemId: string, tripId: string) {
   const user = await ensureUser();
   if (!user) throw new Error("Unauthorized");
