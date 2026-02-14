@@ -11,6 +11,7 @@ export function useSupabase() {
     SUPABASE_ANON_KEY,
     async () => {
       const credentials = await getCredentials();
+      if (!credentials?.accessToken) throw new Error("No access token");
       return credentials.accessToken;
     }
   );

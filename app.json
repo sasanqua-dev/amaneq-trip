@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "44cebc30-5e3e-4eab-ad20-4161b533bae7"
+      }
+    },
+    "android": {
+      "package": "com.amaneq.trip"
+    },
+    "ios": {
+      "bundleIdentifier": "com.amaneq.trip",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

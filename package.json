@@ -38,6 +38,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "eas-cli": "^18.0.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "shadcn": "^3.8.4",
@@ -48,6 +49,8 @@
     "typescript": "^5"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["supabase"]
+    "onlyBuiltDependencies": [
+      "supabase"
+    ]
   }
 }
