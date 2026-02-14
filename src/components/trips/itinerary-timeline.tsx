@@ -414,6 +414,10 @@ export function ItineraryTimeline({ tripId, items, startDate, readOnly }: Itiner
 																		locationName={item.locationName}
 																		latitude={item.latitude}
 																		longitude={item.longitude}
+																		tripId={tripId}
+																		dayNumber={item.dayNumber}
+																		parentItemId={item.id}
+																		readOnly={readOnly}
 																	/>
 																)}
 															</div>
